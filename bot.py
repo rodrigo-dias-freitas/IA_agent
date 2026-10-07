@@ -5,16 +5,32 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 import time
+from dotenv import load_dotenv
 
-# Passar a chave diretamente no genai.Client para evitar falha no carregamento
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or "AQ.Ab8RN6KnC99IPO0S-mf_uf5EtJNLwXiLelP7u0JTjZKF90pqJQ"
-TELEGRAM_TOKEN = "8688582686:AAFaAEoBxCPEYGNJZatpqoHbTCSTZYjJefc"
+# Carrega as variáveis do arquivo .env (se existir)
+load_dotenv()
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+
+# Lê os IDs permitidos da variável de ambiente
+raw_ids = os.environ.get("ALLOWED_TELEGRAM_IDS", "")
+# Converte a string "123456789,987654321" numa lista de inteiros [123456789, 987654321]
+USUARIOS_AUTORIZADOS = [int(uid.strip()) for uid in raw_ids.split(",") if uid.strip().isdigit()]
 
 # Inicializa o cliente Gemini
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("🔎 *Analisando gráfico / texto com o Gemini...*", parse_mode="Markdown")
+    # 🛑 VERIFICAÇÃO DE SEGURANÇA: Bloqueia utilizadores não autorizados
+    user_id = update.effective_user.id
+    if user_id not in USUARIOS_AUTORIZADOS:
+        print(f"⚠️ Acesso negado para o ID não autorizado: {user_id}")
+        await update.message.reply_text("⛔ Acesso restrito. Este bot é privado.")
+        return
+    await update.message.reply_text("🔎 *Analisando gráfico com o SFLIM Agent...*", parse_mode="Markdown")
+
+
 
     prompt_instrucao = """
     Você é um Analista Macro e de Microestrutura de Mercado.
