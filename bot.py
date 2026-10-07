@@ -5,14 +5,18 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 import time
+from dotenv import load_dotenv
 
-# Configurações do ambiente
+# Carrega as variáveis do arquivo .env (se existir)
+load_dotenv()
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-USUARIOS_AUTORIZADOS = [
-    8704058004
-]
+# Lê os IDs permitidos da variável de ambiente
+raw_ids = os.environ.get("ALLOWED_TELEGRAM_IDS", "")
+# Converte a string "123456789,987654321" numa lista de inteiros [123456789, 987654321]
+USUARIOS_AUTORIZADOS = [int(uid.strip()) for uid in raw_ids.split(",") if uid.strip().isdigit()]
 
 # Inicializa o cliente Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
