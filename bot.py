@@ -55,7 +55,7 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # 4. Sessão de Chat com Google Search Grounding ativo
         chat = client.chats.create(
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             config={
                 "tools": [{"google_search": {}}]  # Ativa a pesquisa de notícias no Google
             }
