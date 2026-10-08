@@ -66,7 +66,12 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # 5. Enviar a resposta para o Telegram
-        await update.message.reply_text(response.text, parse_mode="Markdown")
+        try:
+            await update.message.reply_text(response.text, parse_mode="Markdown")
+        except Exception as parse_error:
+            print(f"Aviso de formatação no Telegram, enviando como texto simples: {parse_error}")
+            # Se o Telegram falhar ao ler o Markdown da IA, envia o texto limpo sem travar o bot
+            await update.message.reply_text(response.text)
 
     except Exception as e:
         print(f"Erro no processamento: {e}")
