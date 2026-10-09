@@ -96,7 +96,7 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     # Configura o proxy gratuito obrigatório do PythonAnywhere
     request_config = HTTPXRequest(
-        proxy_url="http://proxy.server:3128",
+        proxy="http://proxy.server:3128",
         connect_timeout=30.0,
         read_timeout=30.0
     )
