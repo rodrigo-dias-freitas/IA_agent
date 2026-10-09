@@ -1,4 +1,11 @@
 import os
+
+# 1. FORÇAR O PROXY DO PYTHONANYWHERE NAS VARIÁVEIS DE AMBIENTE (Antes de tudo)
+os.environ["HTTP_PROXY"] = "http://proxy.server:3128"
+os.environ["HTTPS_PROXY"] = "http://proxy.server:3128"
+os.environ["http_proxy"] = "http://proxy.server:3128"
+os.environ["https_proxy"] = "http://proxy.server:3128"
+
 import io
 import asyncio
 from PIL import Image
