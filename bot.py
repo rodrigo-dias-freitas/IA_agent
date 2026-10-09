@@ -107,3 +107,7 @@ if __name__ == "__main__":
         .request(request_config)
         .build()
     )
+    
+    app.add_handler(MessageHandler(filters.PHOTO, processar_midia))
+    print("🚀 Agente do Telegram SFLIM ativo via Proxy...")
+    app.run_polling()
