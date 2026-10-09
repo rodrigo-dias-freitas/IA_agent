@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 from dotenv import load_dotenv
+from telegram.request import HTTPXRequest
 
 # Carrega as variáveis do arquivo .env (se existir)
 load_dotenv()
@@ -93,7 +94,16 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Ocorreu um erro ao processar a análise: {str(e)}")
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(MessageHandler(filters.PHOTO, processar_midia))
-    print("🚀 Agente do Telegram SFLIM ativo...")
-    app.run_polling()
+    # Configura o proxy gratuito obrigatório do PythonAnywhere
+    request_config = HTTPXRequest(
+        proxy_url="http://proxy.server:3128",
+        connect_timeout=30.0,
+        read_timeout=30.0
+    )
+
+    app = (
+        ApplicationBuilder()
+        .token(TELEGRAM_TOKEN)
+        .request(request_config)
+        .build()
+    )
