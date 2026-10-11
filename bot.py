@@ -1,11 +1,4 @@
 import os
-
-# 1. FORÇAR O PROXY DO PYTHONANYWHERE NAS VARIÁVEIS DE AMBIENTE (Antes de tudo)
-os.environ["HTTP_PROXY"] = "http://proxy.server:3128"
-os.environ["HTTPS_PROXY"] = "http://proxy.server:3128"
-os.environ["http_proxy"] = "http://proxy.server:3128"
-os.environ["https_proxy"] = "http://proxy.server:3128"
-
 import io
 import asyncio
 from PIL import Image
@@ -101,20 +94,7 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Ocorreu um erro ao processar a análise: {str(e)}")
 
 if __name__ == "__main__":
-    # Configura o proxy gratuito obrigatório do PythonAnywhere
-    request_config = HTTPXRequest(
-        proxy="http://proxy.server:3128",
-        connect_timeout=30.0,
-        read_timeout=30.0
-    )
-
-    app = (
-        ApplicationBuilder()
-        .token(TELEGRAM_TOKEN)
-        .request(request_config)
-        .build()
-    )
-    
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.PHOTO, processar_midia))
-    print("🚀 Agente do Telegram SFLIM ativo via Proxy...")
+    print("🚀 Agente do Telegram SFLIM ativo...")
     app.run_polling()
