@@ -6,95 +6,107 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 from dotenv import load_dotenv
-from telegram.request import HTTPXRequest
 
-# Carrega as variáveis do arquivo .env (se existir)
 load_dotenv()
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
-# Lê os IDs permitidos da variável de ambiente
 raw_ids = os.environ.get("ALLOWED_TELEGRAM_IDS", "")
-# Converte a string "123456789,987654321" numa lista de inteiros [123456789, 987654321]
 USUARIOS_AUTORIZADOS = [int(uid.strip()) for uid in raw_ids.split(",") if uid.strip().isdigit()]
 
-# Inicializa o cliente Gemini
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🛑 VERIFICAÇÃO DE SEGURANÇA: Bloqueia utilizadores não autorizados
+# Dicionário em memória para armazenar a conversa de cada usuário
+SESSIONS = {}
+
+SYSTEM_INSTRUCTION = """
+Você é o SFLIM Agent, um analista técnico sênior e especialista em gestão de risco quantitativa para o mercado financeiro global.
+Sua prioridade máxima é a preservação de capital e a alta seletividade de entradas (foco em winrate e payoff assimétrico).
+Responda de forma fluida, profissional e direta.
+
+REGRAS RÍGIDAS DE OPERAÇÃO E FILTRAGEM:
+1. **Critério de Seleção Severo:** Só sugira entradas quando houver alta confluência técnica (rompimento de estrutura, pullback claro ou zonas institucionais fortes). Se o gráfico estiver em consolidação confusa ou ruído, recomende explicitamente **NÃO OPERAR (Aguardar definição)**.
+2. **Payoff Mínimo Obrigatório (1:2):** A relação Risco x Retorno deve ser de no mínimo 1 para 2. O alvo de Take Profit (TP) tem de ser, obrigatoriamente, pelo menos o dobro da distância em pontos do Stop Loss (SL). Caso contrário, rejeite a operação.
+3. **Gestão de Lote:** O lote mínimo operacional é estritamente 0.06.
+4. **Proteção contra Spread:** Diferencie claramente os preços de Bid e Ask, posicionando o SL em zonas técnicas seguras que impeçam saídas a zero (*break-even* forçado por volatilidade de ruído).
+5. **Fundamentos:** Sempre cruze os dados técnicos com o calendário macroeconômico e notícias recentes do dia para o ativo.
+- Você tem acesso à busca na web para consultar cotações e notícias em tempo real quando o usuário perguntar sobre o mercado.
+"""
+
+def get_chat_session(user_id: int):
+    """Obtém ou cria uma sessão de chat persistente para o usuário."""
+    if user_id not in SESSIONS:
+        SESSIONS[user_id] = client.chats.create(
+            model="gemini-3.8-flash",
+            config={
+                "system_instruction": SYSTEM_INSTRUCTION,
+                "tools": [{"google_search": {}}]
+            }
+        )
+    return SESSIONS[user_id]
+
+async def processar_mensagem_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
-        print(f"⚠️ Acesso negado para o ID não autorizado: {user_id}")
-        await update.message.reply_text("⛔ Acesso restrito. Este bot é privado.")
         return
-    await update.message.reply_text("🔎 *Analisando gráfico com o SFLIM Agent...*", parse_mode="Markdown")
+
+    texto_usuario = update.message.text
+    chat = get_chat_session(user_id)
+
+    await update.message.reply_chat_action("typing")
 
     try:
-        # 2. Descarregar a foto enviada
+        loop = asyncio.get_event_loop()
+        response = await asyncio.wait_for(
+            loop.run_in_executor(None, lambda: chat.send_message(texto_usuario)),
+            timeout=30.0
+        )
+        await update.message.reply_text(response.text, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Erro ao processar mensagem: {str(e)}")
+
+async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
+        return
+
+    await update.message.reply_text("🔎 *Analisando o gráfico com o SFLIM Agent (Lote min: 0.06 | Foco R:R 1:2+)...*", parse_mode="Markdown")
+
+    try:
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
         image = Image.open(io.BytesIO(image_bytes))
 
-        # Captura o texto da legenda ou assume 0.06 por padrão
         user_caption = (update.message.caption or "").strip()
         lote_informado = user_caption if user_caption else "0.06"
-        
+
         prompt = f"""
-        Atua como um analista técnico e macroeconómico especializado em trading intraday.
-
-        INFORMAÇÃO DE LOTE DO USUÁRIO: "{lote_informado}"
-        REGRA RÍGIDA DE LOTE: 
-        - Se a legenda enviada não for um número válido ou for menor que 0.06 (ou estiver vazia), CONSIDERE O LOTE DE 0.06.
-        - O lote mínimo operacional é 0.06.
-
-        Sua tarefa:
-        1. Identifique o ativo e o tempo gráfico presente na imagem.
-        2. Determine o ponto de Entrada (preço atual/gatilho), o nível técnico ideal de STOP LOSS (SL) e o TAKE PROFIT (Alvo/TP).
-        3. Com base no lote definido (mínimo 0.06), CALCULE o valor do risco em dinheiro ($ USD) e em pontos/pips.
-        4. Realize a pesquisa no Google para buscar as NOTÍCIAS MAIS RECENTES do dia e os EVENTOS DO CALENDÁRIO ECONÔMICO para este ativo.
-
-        Estrutura obrigatoria da resposta:
-        • **Ativo & Contexto:** [Nome do ativo e Tempo Gráfico]
-        • **Configuração da Ordem:** Entrada [Preço] | SL [Preço] | TP [Preço]
-        • **Gestão de Risco & Tamanho da Posição (Lote: {lote_informado}):**
-           - **Prejuízo Máximo (se bater no SL):** -$[Valor] USD ([X] pontos / pips)
-           - **Lucro Projetado (se atingir o Alvo):** +$[Valor] USD ([X] pontos / pips)
-           - **Relação Risco x Retorno:** [Ex: 1 : 2.5]
-        • **Leitura Técnica & Notícias:** [Análise de Price Action + Notícias e Calendário do dia]
-        • **Viés Operacional & Alerta:** [Comprador / Vendedor / Neutro + Orientação de Risco]
+        Analise a imagem deste gráfico de trading rigorosamente sob as regras de gestão de risco e payoff mínimo de 1:2.
+        Informação do lote enviado pelo usuário: "{lote_informado}" (Lote mínimo: 0.06).
+        
+        Realize a leitura técnica completa, verifique se há confluência real para entrada, defina SL, TP (verificando se atinge a proporção mínima de 1:2), calcule o risco em USD e verifique as notícias de hoje para este ativo. Caso não haja oportunidade clara, recomende aguardar.
         """
 
-        # 4. Sessão de Chat com Google Search Grounding ativo
-        chat = client.chats.create(
-            model="gemini-3.8-flash",
-            config={
-                "tools": [{"google_search": {}}]  # Ativa a pesquisa de notícias no Google
-            }
-        )
+        chat = get_chat_session(user_id)
 
-        # Timeout de 45 segundos para a requisição não travar
         loop = asyncio.get_event_loop()
         response = await asyncio.wait_for(
             loop.run_in_executor(None, lambda: chat.send_message(message=[image, prompt])),
             timeout=45.0
         )
+        await update.message.reply_text(response.text, parse_mode="Markdown")
 
-        # 5. Enviar a resposta para o Telegram
-        try:
-            await update.message.reply_text(response.text, parse_mode="Markdown")
-        except Exception:
-            await update.message.reply_text(response.text)
-
-    except asyncio.TimeoutError:
-        await update.message.reply_text("⏱️ A consulta demorou muito para responder (timeout). Por favor, envie a foto novamente.")
     except Exception as e:
-        print(f"Erro no processamento: {e}")
-        await update.message.reply_text(f"⚠️ Ocorreu um erro ao processar a análise: {str(e)}")
+        await update.message.reply_text(f"⚠️ Erro ao analisar a imagem: {str(e)}")
 
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    
+    # Manipulador para fotos
     app.add_handler(MessageHandler(filters.PHOTO, processar_midia))
-    print("🚀 Agente do Telegram SFLIM ativo...")
+    # Manipulador para mensagens de texto (perguntas diretas)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, processar_mensagem_texto))
+    
+    print("🚀 Agente do Telegram SFLIM ativo (Texto + Visão + Gestão Otimizada)...")
     app.run_polling()
