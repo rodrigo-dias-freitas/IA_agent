@@ -62,7 +62,13 @@ async def processar_mensagem_texto(update: Update, context: ContextTypes.DEFAULT
             loop.run_in_executor(None, lambda: chat.send_message(texto_usuario)),
             timeout=30.0
         )
-        await update.message.reply_text(response.text, parse_mode="Markdown")
+        
+        # Tenta enviar com Markdown, se falhar por erro de entidade, envia como texto normal
+        try:
+            await update.message.reply_text(response.text, parse_mode="Markdown")
+        except Exception:
+            await update.message.reply_text(response.text)
+
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro ao processar mensagem: {str(e)}")
 
@@ -95,7 +101,12 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
             loop.run_in_executor(None, lambda: chat.send_message(message=[image, prompt])),
             timeout=45.0
         )
-        await update.message.reply_text(response.text, parse_mode="Markdown")
+        
+        # Bloco protegido contra falhas de Markdown
+        try:
+            await update.message.reply_text(response.text, parse_mode="Markdown")
+        except Exception:
+            await update.message.reply_text(response.text)
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro ao analisar a imagem: {str(e)}")
