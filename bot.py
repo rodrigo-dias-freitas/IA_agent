@@ -46,6 +46,22 @@ def get_chat_session(user_id: int):
         )
     return SESSIONS[user_id]
 
+async def enviar_mensagem_dividida(update: Update, texto: str):
+    """Envia mensagens divididas em partes menores se excederem o limite do Telegram."""
+    max_length = 4000  # Limite de caracteres do Telegram
+    if len(texto) <= max_length:
+        try:
+            await update.message.reply_text(texto, parse_mode="Markdown")
+        except Exception:
+            await update.message.reply_text(texto)
+    else:
+        for i in range(0, len(texto), max_length):
+            parte = texto[i:i + max_length]
+            try:
+                await update.message.reply_text(parte, parse_mode="Markdown")
+            except Exception:
+                await update.message.reply_text(parte)
+
 async def processar_mensagem_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
@@ -65,9 +81,9 @@ async def processar_mensagem_texto(update: Update, context: ContextTypes.DEFAULT
         
         # Tenta enviar com Markdown, se falhar por erro de entidade, envia como texto normal
         try:
-            await update.message.reply_text(response.text, parse_mode="Markdown")
+            await enviar_mensagem_dividida(update, response.text)
         except Exception:
-            await update.message.reply_text(response.text)
+            await enviar_mensagem_dividida(update, response.text)
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro ao processar mensagem: {str(e)}")
@@ -104,9 +120,9 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Bloco protegido contra falhas de Markdown
         try:
-            await update.message.reply_text(response.text, parse_mode="Markdown")
+            await enviar_mensagem_dividida(update, response.text)
         except Exception:
-            await update.message.reply_text(response.text)
+            await enviar_mensagem_dividida(update, response.text)
 
     except Exception as e:
         await update.message.reply_text(f"⚠️ Erro ao analisar a imagem: {str(e)}")
