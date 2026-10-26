@@ -1,11 +1,13 @@
 import os
 import io
 import asyncio
+import time
 from PIL import Image
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 from dotenv import load_dotenv
+from google.genai.errors import APIError
 
 load_dotenv()
 
@@ -45,6 +47,29 @@ def get_chat_session(user_id: int):
             }
         )
     return SESSIONS[user_id]
+
+def analisar_imagem_com_retry(client, model_name, contents, max_retries=3, delay=5):
+    """Tenta chamar a API do Gemini com tentativas automáticas em caso de erro 503."""
+    for tentativa in range(1, max_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=contents
+            )
+            return response
+        except APIError as e:
+            # Verifica se é o erro 503 (Unavailable / High Demand)
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                if tentativa < max_retries:
+                    print(f"⚠️ Servidor do Gemini sobrecarregado (Tentativa {tentativa}/{max_retries}). A tentar novamente em {delay}s...")
+                    time.sleep(delay)
+                    delay *= 2  # Aumento exponencial do tempo de espera (ex: 5s, 10s, 20s)
+                    continue
+            raise e
+        except Exception as e:
+            # Outros erros que não sejam 503 da API
+            raise e
+    raise Exception("❌ O Gemini continua indisponível após várias tentativas devido a alta demanda.")
 
 async def enviar_mensagem_dividida(update: Update, texto: str):
     """Envia mensagens divididas em partes menores se excederem o limite do Telegram."""
