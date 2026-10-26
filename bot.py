@@ -48,26 +48,32 @@ def get_chat_session(user_id: int):
         )
     return SESSIONS[user_id]
 
-def analisar_imagem_com_retry(client, model_name, contents, max_retries=3, delay=5):
-    """Tenta chamar a API do Gemini com tentativas automáticas em caso de erro 503."""
+def chamada_gemini_com_retry(chat_or_client, contents, model_name="gemini-3.8-flash", max_retries=3, delay=5):
+    """Executa o envio de mensagens para o chat ou modelo com tentativas automáticas em caso de erro 503."""
     for tentativa in range(1, max_retries + 1):
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=contents
-            )
-            return response
+            # Se for um chat do Gemini (chat.send_message)
+            if hasattr(chat_or_client, "send_message"):
+                return chat_or_client.send_message(message=contents)
+            # Se for chamada direta ao client.models
+            else:
+                return chat_or_client.models.generate_content(model=model_name, contents=contents)
         except APIError as e:
-            # Verifica se é o erro 503 (Unavailable / High Demand)
             if "503" in str(e) or "UNAVAILABLE" in str(e):
                 if tentativa < max_retries:
                     print(f"⚠️ Servidor do Gemini sobrecarregado (Tentativa {tentativa}/{max_retries}). A tentar novamente em {delay}s...")
                     time.sleep(delay)
-                    delay *= 2  # Aumento exponencial do tempo de espera (ex: 5s, 10s, 20s)
+                    delay *= 2  # Aumento exponencial
                     continue
             raise e
         except Exception as e:
-            # Outros erros que não sejam 503 da API
+            # Trata também erros genéricos que possam conter 503 na mensagem
+            if "503" in str(e) or "UNAVAILABLE" in str(e):
+                if tentativa < max_retries:
+                    print(f"⚠️ Servidor sobrecarregado (Tentativa {tentativa}/{max_retries}). A tentar novamente em {delay}s...")
+                    time.sleep(delay)
+                    delay *= 2
+                    continue
             raise e
     raise Exception("❌ O Gemini continua indisponível após várias tentativas devido a alta demanda.")
 
@@ -100,8 +106,8 @@ async def processar_mensagem_texto(update: Update, context: ContextTypes.DEFAULT
     try:
         loop = asyncio.get_event_loop()
         response = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: chat.send_message(texto_usuario)),
-            timeout=30.0
+            loop.run_in_executor(None, lambda: chamada_gemini_com_retry(chat, texto_usuario)),
+            timeout=40.0
         )
         
         # Tenta enviar com Markdown, se falhar por erro de entidade, envia como texto normal
@@ -139,8 +145,8 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         loop = asyncio.get_event_loop()
         response = await asyncio.wait_for(
-            loop.run_in_executor(None, lambda: chat.send_message(message=[image, prompt])),
-            timeout=45.0
+            loop.run_in_executor(None, lambda: chamada_gemini_com_retry(chat, [image, prompt])),
+            timeout=50.0
         )
         
         # Bloco protegido contra falhas de Markdown
