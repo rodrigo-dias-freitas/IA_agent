@@ -131,7 +131,7 @@ async def processar_midia(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if USUARIOS_AUTORIZADOS and user_id not in USUARIOS_AUTORIZADOS:
         return
 
-    await update.message.reply_text("🔎 *Analisando o gráfico com o SFLIM Agent (Lote min: 0.06 | Foco R:R 1:2+)...*", parse_mode="Markdown")
+    await update.message.reply_text("🔎 *Analisando o gráfico com o SFLIM Agent...*", parse_mode="Markdown")
 
     try:
         photo_file = await update.message.photo[-1].get_file()
